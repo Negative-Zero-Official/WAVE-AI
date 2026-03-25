@@ -8,9 +8,9 @@ class WAVENetwork(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(4, 128),
             nn.Tanh(),
-            nn.Linear(128, 256),
+            nn.Linear(128, 128),
             nn.Tanh(),
-            nn.Linear(256, 128),
+            nn.Linear(128, 128),
             nn.Tanh(),
             nn.Linear(128, 4)
         )

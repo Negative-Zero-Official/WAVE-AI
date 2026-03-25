@@ -1,9 +1,12 @@
 import torch
-from torch import nn, optim
+from torch import optim
 from scipy.stats import qmc
 from tqdm import tqdm
+import matplotlib.pyplot as plt
 from physics_source import c, mu_0, epsilon_0, rho_func, J_func
 from network import WAVENetwork
+
+torch.manual_seed(42)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -170,7 +173,9 @@ def train():
     # Weighting factor for the boundary conditions
     # In PINNs, it is notoriously hard to make the network respect the boundaries
     # Multiplying the BC loss by a scalar (like 10 or 100) forces the optimizer to prioritize it
-    lambda_bc = 10.0
+    lambda_bc = 1000.0
+
+    losses = []
 
     loop = tqdm(range(epochs), leave=True)
     for epoch in loop:
@@ -184,6 +189,7 @@ def train():
 
         # 3. Backpropagation
         total_loss.backward()
+        losses.append(total_loss.item())
 
         # 4. Update weights
         optimizer.step()
@@ -203,6 +209,10 @@ def train():
     }, "WAVEAI_training_data.pth")
 
     print("Artifacts saved successfully.")
+
+    plt.plot(losses)
+    plt.show()
+    plt.savefig('loss-curve.png', dpi=300)
 
 if __name__ == "__main__":
     if (int(input("Begin process? (0/1): "))):
