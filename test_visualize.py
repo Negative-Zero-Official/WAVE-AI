@@ -2,10 +2,19 @@ import torch
 import matplotlib.pyplot as plt
 import numpy as np
 from network import WAVENetwork
+from scipy import constants
 from pinn_solver import get_gradient
 from physics_source import t0
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+N_particles = 1e11
+q_charge = constants.e
+sigma_x_real = 0.001
+sigma_y_real = 0.001
+sigma_z_real = 0.05
+L0_real = 1.0
+epsilon_0_real = constants.epsilon_0
 
 def test_and_visualize(model_path):
     print("Loading model for inference...")
@@ -49,6 +58,12 @@ def test_and_visualize(model_path):
     dAz_dt = get_gradient(Az, t_test)
 
     Ez = -dPhi_dz - dAz_dt
+
+    rho_peak = (N_particles * q_charge) / (pow(2 * constants.pi, 1.5) * sigma_x_real * sigma_y_real * sigma_z_real)
+
+    E_0 = (rho_peak * L0_real) / epsilon_0_real
+
+    Ez = Ez * E_0
 
     # Visualization
     # Detach from PyTorch graph and shape back into 2D grid dimensions

@@ -247,8 +247,9 @@ def train():
 
     # TRAINING LOOP
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
-    epochs = 1000
-    lambda_bc = 1.0 # Scale each loss individually, so weight can be 1
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=500)
+    epochs = 10000
+    lambda_bc = 100.0 # Prioritize walls
     lambda_ic = 100.0 # Initial conditions are crucial - give high weight
 
     # OLD CODE: TODO: Remove if deemed unnecessary
@@ -283,6 +284,9 @@ def train():
 
         # 4. Update weights
         optimizer.step()
+
+        # 5. Update learning rate
+        scheduler.step(total_loss.item())
 
         loop.set_description(f"Training")
         loop.set_postfix(loss=total_loss.item())
