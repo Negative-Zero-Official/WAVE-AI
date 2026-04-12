@@ -92,7 +92,7 @@ class WAVENetwork(nn.Module):
             out[:, 0:1],    # Phi
             out[:, 1:2],    # Ax
             out[:, 2:3],    # Ay
-            out[:, 3:4],    # Ax
+            out[:, 3:4],    # Az
         )
     
     def count_parameters(self) -> int:
