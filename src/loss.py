@@ -1,6 +1,6 @@
 from __future__ import annotations
 import torch
-from config import LAMBDA_BC, LAMBDA_IC, LAMBDA_GAUGE
+from config import LAMBDA_BC, LAMBDA_IC, LAMBDA_GAUGE, PHI_REF, A_REF, E_REF
 from src.physics import compute_pde_residuals, compute_em_fields, tangential_E_on_face
 from src.geometry import classify_boundary
 from src.physics import normalize   # for IC forward pass
@@ -36,6 +36,16 @@ def pde_loss(model, pts: torch.Tensor) -> tuple[torch.Tensor, dict[str, float]]:
     l_az = _mse(res["az"])
     l_gauge = _mse(res["gauge"])
 
+    for name, term in [
+        ("pde_phi", l_phi),
+        ("pde_ax", l_ax),
+        ("pde_ay", l_ay),
+        ("pde_az", l_az),
+        ("pde_gauge", l_gauge),
+    ]:
+        if not torch.isfinite(term):
+            print(f"WARNING: Non-finite PDE term {name}: {term.item()}")
+
     loss = l_phi + l_ax + l_ay + l_az + LAMBDA_GAUGE * l_gauge
 
     detail = {
@@ -65,7 +75,9 @@ def bc_loss(
         x, y, z, t = _make_leaf(pts)
         fields = compute_em_fields(model, x, y, z, t)
         Et1, Et2 = tangential_E_on_face(fields, face)
-        face_loss = _mse(Et1) + _mse(Et2)
+        face_loss = _mse(Et1 / E_REF) + _mse(Et2 / E_REF)
+        if not torch.isfinite(face_loss):
+            print(f"WARNING: Non-finite BC loss on face {face}: {face_loss.item()}")
         detail[f"bc_{face}"] = face_loss.item()
         total_loss += face_loss
     
@@ -88,10 +100,19 @@ def ic_loss(
     coords = torch.cat([xn, yn, zn, tn], dim=1)
     pots = model(coords)
 
-    l_phi = _mse(pots[:, 0:1])
-    l_ax = _mse(pots[:, 1:2])
-    l_ay = _mse(pots[:, 2:3])
-    l_az = _mse(pots[:, 3:4])
+    l_phi = _mse(pots[:, 0:1] / PHI_REF)
+    l_ax = _mse(pots[:, 1:2] / A_REF)
+    l_ay = _mse(pots[:, 2:3] / A_REF)
+    l_az = _mse(pots[:, 3:4] / A_REF)
+
+    for name, term in [
+        ("ic_phi", l_phi),
+        ("ic_ax", l_ax),
+        ("ic_ay", l_ay),
+        ("ic_az", l_az),
+    ]:
+        if not torch.isfinite(term):
+            print(f"WARNING: Non-finite IC term {name}: {term.item()}")
 
     loss = l_phi + l_ax + l_ay + l_az
     detail = {

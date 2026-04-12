@@ -244,51 +244,67 @@ class Trainer:
         # Mutable closure state (so we can log it after each step)
         closure_ld: dict[str, float] = {}
         closure_call_count = 0
+        lbfgs_failed = False
+
+        def _zero_gradients():
+            for p in self.model.parameters():
+                if p.grad is not None:
+                    p.grad.zero_()
 
         def closure():
             nonlocal closure_call_count
             closure_call_count += 1
             start_time = time.time()
-            
+
             optimizer.zero_grad()
             loss, ld = self._eval_loss(pde_pts_fixed, bc_pts_fixed, ic_pts_fixed)
-            
+
             # Check for NaN/inf in loss
             if not torch.isfinite(loss):
                 print(f"WARNING: Non-finite loss detected in closure call {closure_call_count}: {loss.item()}")
-                return torch.tensor(float('inf'), device=loss.device)
-            
+                _zero_gradients()
+                raise RuntimeError(
+                    f"Invalid loss in L-BFGS closure (call {closure_call_count})"
+                )
+
             loss.backward()
-            
+
             # Check gradients before clipping
-            total_grad_norm = torch.norm(torch.stack([torch.norm(p.grad.detach()) for p in self.model.parameters() if p.grad is not None]))
+            total_grad_norm = torch.norm(
+                torch.stack([
+                    torch.norm(p.grad.detach())
+                    for p in self.model.parameters()
+                    if p.grad is not None
+                ])
+            )
             if not torch.isfinite(total_grad_norm):
                 print(f"WARNING: Infinite gradients detected before clipping in closure call {closure_call_count}")
-                # Update closure_ld even for inf case
-                closure_ld.update(ld)
-                closure_ld["closure_calls"] = closure_call_count
-                closure_ld["grad_norm"] = float('inf')
-                closure_ld["closure_time"] = time.time() - start_time
-                # Set gradients to zero to prevent optimizer issues
-                for p in self.model.parameters():
-                    if p.grad is not None:
-                        p.grad.zero_()
-                return torch.tensor(float('inf'), device=loss.device)
-            
+                _zero_gradients()
+                raise RuntimeError(
+                    f"Infinite gradients in L-BFGS closure (call {closure_call_count})"
+                )
+
             # Gradient clipping prevents exploding gradients
             grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
-            
-            # Check for NaN/inf in gradients
-            has_nan_grad = any(not torch.isfinite(p.grad).all() for p in self.model.parameters() if p.grad is not None)
-            if has_nan_grad:
+
+            # Check for NaN/inf in gradients after clipping
+            has_invalid_grad = any(
+                not torch.isfinite(p.grad).all()
+                for p in self.model.parameters()
+                if p.grad is not None
+            )
+            if has_invalid_grad:
                 print(f"WARNING: NaN/inf gradients detected in closure call {closure_call_count}")
-                return torch.tensor(float('inf'), device=loss.device)
-            
+                _zero_gradients()
+                raise RuntimeError(
+                    f"Invalid gradients in L-BFGS closure (call {closure_call_count})"
+                )
+
             closure_ld.update(ld)
             closure_ld["closure_calls"] = closure_call_count
             closure_ld["grad_norm"] = grad_norm.item()
             closure_ld["closure_time"] = time.time() - start_time
-            
+
             return loss
 
         t0 = time.time()
@@ -302,12 +318,22 @@ class Trainer:
         
         for epoch in epoch_iter:
             closure_call_count = 0  # Reset per epoch
-            
+
             step_start = time.time()
             self.model.train()
-            optimizer.step(closure)
+            try:
+                optimizer.step(closure)
+            except RuntimeError as exc:
+                message = str(exc)
+                if "Invalid loss" in message or "Infinite gradients" in message or "Invalid gradients" in message:
+                    epoch_iter.write(
+                        f"[LBFGS {epoch:4d}/{n_epochs - 1}]  Aborted: {message}"
+                    )
+                    lbfgs_failed = True
+                    break
+                raise
             step_time = time.time() - step_start
-            
+
             closure_ld["epoch"] = self.start_epoch + epoch
             closure_ld["step_time"] = step_time
             self.history.append(dict(closure_ld))
@@ -331,8 +357,12 @@ class Trainer:
             if epoch % SAVE_INTERVAL == 0 and epoch > 0:
                 self.save_checkpoint(self.start_epoch + epoch, phase="lbfgs")
 
-        self.start_epoch += n_epochs
-        print(f"\nL-BFGS phase complete.  Final {_format_loss(self.history[-1])}\n")
+        if lbfgs_failed:
+            self.start_epoch += epoch
+            print("\nL-BFGS phase aborted early due to invalid closure evaluation.\n")
+        else:
+            self.start_epoch += n_epochs
+            print(f"\nL-BFGS phase complete.  Final {_format_loss(self.history[-1])}\n")
 
     # Full training
 

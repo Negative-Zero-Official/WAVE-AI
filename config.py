@@ -81,6 +81,8 @@ RES_GAUGE_SCALE = max(RES_A_SCALE * L_REF, 1e-20)
 
 PHI_REF = Q_TOTAL / (4.0 * math.pi * EPSILON_0 * L_REF)
 A_REF = PHI_REF / C_LIGHT
+E_REF = PHI_REF / L_REF
+B_REF = E_REF / C_LIGHT
 
 
 """
@@ -118,7 +120,7 @@ Training Hyper-Parameters
 LR_ADAM = 1e-4
 N_EPOCHS_ADAM = 8_000       # Adam phase (increased for better warm-start)
 
-LR_LBFGS = 0.1              # Reduced from 1.0 to prevent gradient explosion
+LR_LBFGS = 0.01             # Reduced further from 0.1 to improve L-BFGS stability
 N_EPOCHS_LBFGS = 200        # Fewer epochs since each is more expensive
 LBFGS_MAX_ITER = 30         # More L-BFGS iterations per epoch
 LBFGS_HISTORY = 50
