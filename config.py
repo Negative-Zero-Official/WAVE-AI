@@ -135,7 +135,7 @@ LOSS WEIGHTS - CRITICAL FIX
 # New weights (0.01, 0.01): total loss ≈ 60M + 65M + 488K ≈ 125M (more balanced for PDE)
 LAMBDA_BC = 0.01            # Reduced from 5.0 (500× reduction)
 LAMBDA_IC = 0.01            # Reduced from 2.5 (250× reduction)
-LAMBDA_GAUGE = 1.0          # Already inside L_PDE by default
+LAMBDA_GAUGE = 10.0          # Already inside L_PDE by default
 
 # PHASE 2-3 FIXES: Physics Correctness
 LAMBDA_PHI_OVERRIDE = 0.5   # Moderate boost to Φ (cannot remove; A depends on it)

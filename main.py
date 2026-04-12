@@ -236,7 +236,7 @@ def main() -> None:
     )
     plot_sampling_distribution(pde_pts, title="PDE collocation points")
 
-    print("\n  ✓  All done.  Outputs are in:", os.path.abspath(cfg.OUTPUT_DIR))
+    print("\n  [OK]  All done.  Outputs are in:", os.path.abspath(cfg.OUTPUT_DIR))
 
 
 if __name__ == "__main__":

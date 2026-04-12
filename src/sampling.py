@@ -75,7 +75,7 @@ def sample_importance(
 
     x = rng.normal(0.0, n_sigma * SIGMA_X, n).astype(np.float32)
     y = rng.normal(0.0, n_sigma * SIGMA_Y, n).astype(np.float32)
-    z = (z_c + rng.normal(0.0, n_sigma * SIGMA_X, n)).astype(np.float32)
+    z = (z_c + rng.normal(0.0, n_sigma * SIGMA_Z, n)).astype(np.float32)
 
     x = np.clip(x, X_MIN + 1e-6, X_MAX - 1e-6)
     y = np.clip(y, Y_MIN + 1e-6, Y_MAX - 1e-6)
@@ -143,14 +143,14 @@ def sample_boundary(
     nm = counts["main_x"]
     x_ = np.where(rng.integers(0, 2, nm) == 0, A_PIPE, -A_PIPE).astype(np.float32)
     y_ = _uniform(-B_PIPE, B_PIPE, nm, rng)
-    z_ = _uniform(Z_MIN, Z_MAX, nm, rng)
+    z_ = _uniform(Z_MIN, Z_STEP, nm, rng)
     t_ = _uniform(T_MIN, T_MAX, nm, rng)
     result["main_x"] = _to_tensor(np.stack([x_, y_, z_, t_], 1), device)
 
     nm = counts["main_y"]
     x_ = _uniform(-A_PIPE, A_PIPE, nm, rng)
     y_ = np.where(rng.integers(0, 2, nm) == 0, B_PIPE, -B_PIPE).astype(np.float32)
-    z_ = _uniform(Z_MIN, Z_MAX, nm, rng)
+    z_ = _uniform(Z_MIN, Z_STEP, nm, rng)
     t_ = _uniform(T_MIN, T_MAX, nm, rng)
     result["main_y"] = _to_tensor(np.stack([x_, y_, z_, t_], 1), device)
 

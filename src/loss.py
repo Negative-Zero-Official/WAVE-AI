@@ -1,10 +1,11 @@
 from __future__ import annotations
+import math
 import torch
 import numpy as np
 from config import (
-    LAMBDA_BC, LAMBDA_IC, LAMBDA_GAUGE, LAMBDA_PHI_OVERRIDE, 
-    LAMBDA_REG, LAMBDA_SMOOTH, PHI_REF, A_REF, E_REF,
-    SPECTRAL_FILTER_ENABLED, FILTER_CUTOFF_FREQ, C_LIGHT, Z_MAX, Z_MIN
+    EPSILON_0, LAMBDA_BC, LAMBDA_IC, LAMBDA_GAUGE, LAMBDA_PHI_OVERRIDE, 
+    LAMBDA_REG, LAMBDA_SMOOTH, PHI_REF, A_REF, E_REF, Q_TOTAL, SIGMA_X, SIGMA_Z,
+    SPECTRAL_FILTER_ENABLED, FILTER_CUTOFF_FREQ, C_LIGHT, T_MIN, V_BUNCH, Z0_BUNCH, Z_MAX, Z_MIN
 )
 from src.physics import compute_pde_residuals, compute_em_fields, tangential_E_on_face
 from src.geometry import classify_boundary
@@ -92,6 +93,9 @@ def pde_loss(model, pts: torch.Tensor) -> tuple[torch.Tensor, dict[str, float]]:
 
     # PHASE 2 FIX: Strengthen scalar potential enforcement
     loss = l_phi * (1.0 + LAMBDA_PHI_OVERRIDE) + l_ax + l_ay + l_az + LAMBDA_GAUGE * l_gauge
+
+    phi_anchor = torch.mean(res["phi_raw"]**2)
+    loss += 0.01 * phi_anchor
     
     # PHASE 2 FIX: Add regularization to reduce high-frequency artifacts
     reg = _compute_regularization(model)
@@ -150,10 +154,36 @@ def ic_loss(
     coords = torch.cat([xn, yn, zn, tn], dim=1)
     pots = model(coords)
 
-    l_phi = _mse(pots[:, 0:1] / PHI_REF)
-    l_ax = _mse(pots[:, 1:2] / A_REF)
-    l_ay = _mse(pots[:, 2:3] / A_REF)
-    l_az = _mse(pots[:, 3:4] / A_REF)
+    phi_pred = pots[:, 0:1]
+    Ax_pred  = pots[:, 1:2]
+    Ay_pred  = pots[:, 2:3]
+    Az_pred  = pots[:, 3:4]
+
+    # Physical coordinates
+    x_phys = ic_pts[:, 0:1]
+    y_phys = ic_pts[:, 1:2]
+    z_phys = ic_pts[:, 2:3]
+
+    # Relativistic Gaussian Approximation
+    r_perp2 = x_phys**2 + y_phys**2
+    z_rel = z_phys - (Z0_BUNCH + V_BUNCH * T_MIN)
+
+    gamma = 1.0 / math.sqrt(1 - (V_BUNCH / C_LIGHT)**2)
+
+    sigma_x = SIGMA_X
+    sigma_z = SIGMA_Z
+
+    phi_init = PHI_REF * torch.exp(
+        -r_perp2 / (2 * sigma_x**2)
+        - (gamma * z_rel)**2 / (2 * sigma_z**2)
+    )
+
+    Az_init = phi_init / C_LIGHT
+
+    l_phi = _mse((phi_pred - phi_init) / PHI_REF)
+    l_ax = _mse(Ax_pred / A_REF)
+    l_ay = _mse(Ay_pred / A_REF)
+    l_az = _mse((Az_pred - Az_init) / A_REF)
 
     for name, term in [
         ("ic_phi", l_phi),
