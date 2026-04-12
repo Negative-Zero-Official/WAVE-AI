@@ -1,6 +1,11 @@
 from __future__ import annotations
 import torch
-from config import LAMBDA_BC, LAMBDA_IC, LAMBDA_GAUGE, PHI_REF, A_REF, E_REF
+import numpy as np
+from config import (
+    LAMBDA_BC, LAMBDA_IC, LAMBDA_GAUGE, LAMBDA_PHI_OVERRIDE, 
+    LAMBDA_REG, LAMBDA_SMOOTH, PHI_REF, A_REF, E_REF,
+    SPECTRAL_FILTER_ENABLED, FILTER_CUTOFF_FREQ, C_LIGHT, Z_MAX, Z_MIN
+)
 from src.physics import compute_pde_residuals, compute_em_fields, tangential_E_on_face
 from src.geometry import classify_boundary
 from src.physics import normalize   # for IC forward pass
@@ -21,6 +26,45 @@ def _make_leaf(pts: torch.Tensor) -> tuple[torch.Tensor, ...]:
     z = pts[:, 2:3].clone().detach().requires_grad_(True)
     t = pts[:, 3:4].clone().detach().requires_grad_(True)
     return x, y, z, t
+
+
+def _compute_regularization(model) -> torch.Tensor:
+    """Tikhonov regularization: penalize large final-layer weights."""
+    if LAMBDA_REG < 1e-6:
+        return torch.tensor(0.0, device=next(model.parameters()).device)
+    
+    # Get final layer weights
+    final_layer = None
+    for module in model.modules():
+        if isinstance(module, torch.nn.Linear):
+            final_layer = module
+    
+    if final_layer is None:
+        return torch.tensor(0.0, device=next(model.parameters()).device)
+    
+    # Regularize: ||W_L||_F^2 (Frobenius norm)
+    reg = torch.sum(final_layer.weight ** 2)
+    return LAMBDA_REG * reg
+
+
+def _spectral_filter_low_pass(coeffs: torch.Tensor, spatial_extent: float) -> torch.Tensor:
+    """Apply low-pass spectral filter to 1D field (assumes valid shape)."""
+    if not SPECTRAL_FILTER_ENABLED or len(coeffs.shape) != 1:
+        return coeffs
+    
+    # Compute frequency domain
+    fft = torch.fft.rfft(coeffs)
+    freqs = torch.fft.rfftfreq(len(coeffs), d=spatial_extent / len(coeffs))
+    
+    # Create low-pass filter (smooth cutoff)
+    cutoff_norm = FILTER_CUTOFF_FREQ / (C_LIGHT * 1e9)  # Normalize by c
+    mask = torch.exp(-0.5 * (torch.abs(freqs) / cutoff_norm) ** 2)
+    
+    # Apply filter in frequency domain
+    fft_filtered = fft * mask
+    filtered = torch.fft.irfft(fft_filtered, n=len(coeffs))
+    
+    return filtered[:len(coeffs)]
 
 
 """
@@ -46,14 +90,20 @@ def pde_loss(model, pts: torch.Tensor) -> tuple[torch.Tensor, dict[str, float]]:
         if not torch.isfinite(term):
             print(f"WARNING: Non-finite PDE term {name}: {term.item()}")
 
-    loss = l_phi + l_ax + l_ay + l_az + LAMBDA_GAUGE * l_gauge
+    # PHASE 2 FIX: Strengthen scalar potential enforcement
+    loss = l_phi * (1.0 + LAMBDA_PHI_OVERRIDE) + l_ax + l_ay + l_az + LAMBDA_GAUGE * l_gauge
+    
+    # PHASE 2 FIX: Add regularization to reduce high-frequency artifacts
+    reg = _compute_regularization(model)
+    loss = loss + reg
 
     detail = {
         "pde_phi": l_phi.item(),
         "pde_ax": l_ax.item(),
         "pde_ay": l_ay.item(),
         "pde_az": l_az.item(),
-        "pde_gauge": l_gauge.item()
+        "pde_gauge": l_gauge.item(),
+        "pde_reg": reg.item() if torch.isfinite(reg) else 0.0,
     }
 
     return loss, detail

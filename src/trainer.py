@@ -391,7 +391,7 @@ class Trainer:
             },
             path,
         )
-        tqdm.write(f"  ✓  Checkpoint saved → {path}")
+        tqdm.write(f"  [OK] Checkpoint saved -> {path}")
 
     def load_checkpoint(self, path: str) -> None:
         ckpt = torch.load(path, map_location=self.device)

@@ -15,9 +15,12 @@ class SineLayer(nn.Module):
             out_features: int,
             bias: bool = True,
             is_first: bool = False,
-            omega_0: float = 30.0
+            omega_0: float = None
     ) -> None:
         super().__init__()
+        # Use omega_0 from config (Phase 2: reduced to 20 for better A-field fitting)
+        if omega_0 is None:
+            omega_0 = OMEGA_0
         self.omega_0 = omega_0
         self.is_first = is_first
         self.in_features = in_features
@@ -50,9 +53,13 @@ class WAVENetwork(nn.Module):
             out_features: int = 4,
             hidden_size: int = HIDDEN_SIZE,
             num_layers: int = NUM_LAYERS,
-            omega_0: float = OMEGA_0,
+            omega_0: float = None,
     ) -> None:
         super().__init__()
+
+        # Use omega_0 from config if not specified (Phase 2: reduced to 20 for better A-field fitting)
+        if omega_0 is None:
+            omega_0 = OMEGA_0
 
         if num_layers < 1:
             raise ValueError("num_layers >= 1")
