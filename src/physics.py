@@ -111,11 +111,19 @@ def compute_pde_residuals(
     rho = charge_density(x, y, z, t)
     Jx, Jy, Jz = current_density(x, y, z, t)
 
-    # PDE Residuals (SI)
-    res_phi_raw = dalembert(phi) + rho / EPSILON_0
-    res_ax_raw = dalembert(Ax) + MU_0 * Jx
-    res_ay_raw = dalembert(Ay) + MU_0 * Jy
-    res_az_raw = dalembert(Az) + MU_0 * Jz
+    # --- NORMALIZED PDE ---
+    L0 = (Z_MAX - Z_MIN) / 2.0
+    T0 = L0 / C_LIGHT
+
+    rho_scaled = (rho / EPSILON_0) * (L0**2)
+    Jx_scaled = (MU_0 * Jx) * (L0**2)
+    Jy_scaled = (MU_0 * Jy) * (L0**2)
+    Jz_scaled = (MU_0 * Jz) * (L0**2)
+
+    res_phi_raw = dalembert(phi) * (L0**2) + rho_scaled
+    res_ax_raw = dalembert(Ax) * (L0**2) + Jx_scaled
+    res_ay_raw = dalembert(Ay) * (L0**2) + Jy_scaled
+    res_az_raw = dalembert(Az) * (L0**2) + Jz_scaled
 
     # Lorenz Gauge
     dAx_dx = _grad1(Ax, x)

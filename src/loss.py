@@ -93,9 +93,6 @@ def pde_loss(model, pts: torch.Tensor) -> tuple[torch.Tensor, dict[str, float]]:
 
     # PHASE 2 FIX: Strengthen scalar potential enforcement
     loss = l_phi * (1.0 + LAMBDA_PHI_OVERRIDE) + l_ax + l_ay + l_az + LAMBDA_GAUGE * l_gauge
-
-    phi_anchor = torch.mean(res["phi_raw"]**2)
-    loss += 0.01 * phi_anchor
     
     # PHASE 2 FIX: Add regularization to reduce high-frequency artifacts
     reg = _compute_regularization(model)
@@ -194,7 +191,7 @@ def ic_loss(
         if not torch.isfinite(term):
             print(f"WARNING: Non-finite IC term {name}: {term.item()}")
 
-    loss = l_phi + l_ax + l_ay + l_az
+    loss = 5.0 * l_phi + l_ax + l_ay + l_az
     detail = {
         "ic_phi": l_phi.item(),
         "ic_ax": l_ax.item(),

@@ -90,7 +90,7 @@ WAVENetwork Architecture
 """
 HIDDEN_SIZE = 128
 NUM_LAYERS = 4
-OMEGA_0 = 30.0  # Keep at original - proved stable; ω₀=20 caused divergence
+OMEGA_0 = 10.0
 
 
 """
@@ -129,15 +129,10 @@ LBFGS_HISTORY = 50
 """
 LOSS WEIGHTS - CRITICAL FIX
 """
-# Root cause of off-axis field oscillations: BC/IC losses were 95,000× larger than PDE
-# Epoch 0: BC loss (before weight) = 6.1B, IC loss (before weight) = 6.5B, PDE loss = 488K
-# With old weights (5.0, 2.5): total loss = 6.1B×5 + 6.5B×2.5 + 488K ≈ 47B (99.9% BC+IC)
-# New weights (0.01, 0.01): total loss ≈ 60M + 65M + 488K ≈ 125M (more balanced for PDE)
-LAMBDA_BC = 0.01            # Reduced from 5.0 (500× reduction)
-LAMBDA_IC = 0.01            # Reduced from 2.5 (250× reduction)
-LAMBDA_GAUGE = 10.0          # Already inside L_PDE by default
+LAMBDA_BC = 1.0
+LAMBDA_IC = 1.0
+LAMBDA_GAUGE = 10.0
 
-# PHASE 2-3 FIXES: Physics Correctness
 LAMBDA_PHI_OVERRIDE = 0.5   # Moderate boost to Φ (cannot remove; A depends on it)
 LAMBDA_REG = 1e-3           # Tikhonov regularization to suppress oscillations
 LAMBDA_SMOOTH = 0.0         # Smoothness penalty (||∇²u||²) (disabled for now)

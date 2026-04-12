@@ -398,13 +398,13 @@ class Trainer:
         self.model.load_state_dict(ckpt["model_state"])
         self.history     = ckpt.get("history", [])
         self.start_epoch = ckpt.get("epoch", 0) + 1
-        print(f"  ✓  Loaded checkpoint from {path}  (epoch {self.start_epoch - 1})")
+        print(f"  [OK]  Loaded checkpoint from {path}  (epoch {self.start_epoch - 1})")
 
     def _save_history(self) -> None:
         path = os.path.join(OUTPUT_DIR, "loss_history.json")
         with open(path, "w") as f:
             json.dump(self.history, f, indent=2)
-        print(f"  ✓  Loss history saved → {path}")
+        print(f"  [OK]  Loss history saved → {path}")
 
     def load_history(self, path: str | None = None) -> list[dict]:
         if path is None:

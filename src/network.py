@@ -18,7 +18,6 @@ class SineLayer(nn.Module):
             omega_0: float = None
     ) -> None:
         super().__init__()
-        # Use omega_0 from config (Phase 2: reduced to 20 for better A-field fitting)
         if omega_0 is None:
             omega_0 = OMEGA_0
         self.omega_0 = omega_0
@@ -91,7 +90,13 @@ class WAVENetwork(nn.Module):
     
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
         h = self.hidden(coords)
-        return self.output_layer(h)
+        out = self.output_layer(h)
+
+        # Scale outputs to reasonable physical magnitude
+        out[:, 0:1] = out[:, 0:1] * 1.0   # phi
+        out[:, 1:]  = out[:, 1:]  * 0.1   # A fields
+
+        return out
     
     def split_potentials(self, coords: torch.Tensor):
         out = self.forward(coords)

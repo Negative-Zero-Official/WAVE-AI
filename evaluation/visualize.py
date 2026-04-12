@@ -39,7 +39,7 @@ def _save(fig, name: str) -> str:
     path = os.path.join(OUTPUT_DIR, name + ".png")
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"  ✓  Figure saved → {path}")
+    print(f"  [OK]  Figure saved → {path}")
     return path
 
 
@@ -116,7 +116,7 @@ def plot_loss_history(
     return _save(fig, save_name)
 
 
-# 2.  2D E-field slice  (z–x plane at y=0)
+# 2.  2D E-field slice  (z-x plane at y=0)
 
 @torch.no_grad()
 def plot_efield_slice_zx(
@@ -129,7 +129,7 @@ def plot_efield_slice_zx(
     save_name: str | None = None,
 ) -> str:
     """
-    Plot a selected E-field component on the z–x plane at y = 0.
+    Plot a selected E-field component on the z-x plane at y = 0.
 
     Parameters
     ----------
