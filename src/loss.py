@@ -11,7 +11,9 @@ HELPERS
 """
 
 def _mse(tensor: torch.Tensor) -> torch.Tensor:
-    return (tensor ** 2).mean()
+    # Use float64 accumulation for squared residuals to avoid
+    # float32 overflow on very large PDE residuals during early training.
+    return tensor.pow(2).mean(dtype=torch.float64).to(tensor.dtype)
 
 def _make_leaf(pts: torch.Tensor) -> tuple[torch.Tensor, ...]:
     x = pts[:, 0:1].clone().detach().requires_grad_(True)

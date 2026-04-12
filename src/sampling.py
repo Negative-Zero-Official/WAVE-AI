@@ -166,7 +166,7 @@ def sample_boundary(
     y_   = np.where(rng.integers(0, 2, ns) == 0, B_STEP, -B_STEP).astype(np.float32)
     z_   = _uniform(Z_STEP, Z_MAX,  ns, rng)
     t_   = _uniform(T_MIN,  T_MAX,  ns, rng)
-    result["step_x"] = _to_tensor(np.stack([x_, y_, z_, t_], 1), device)
+    result["step_y"] = _to_tensor(np.stack([x_, y_, z_, t_], 1), device)
 
     nsh = counts["shoulder"]
     # Generate points in the annular region by rejection sampling
@@ -207,7 +207,7 @@ def sample_ic(
     while total < n:
         x_ = _uniform(X_MIN, X_MAX, n * 3, rng)
         y_ = _uniform(Y_MIN, Y_MAX, n * 3, rng)
-        z_ = _uniform(Y_MIN, Y_MAX, n * 3, rng)
+        z_ = _uniform(Z_MIN, Z_MAX, n * 3, rng)
         t_ = np.full(n * 3, T_MIN, dtype=np.float32)
 
         xt = torch.tensor(x_)

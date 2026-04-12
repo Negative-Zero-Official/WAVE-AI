@@ -114,8 +114,8 @@ def compute_pde_residuals(
     # PDE Residuals (SI)
     res_phi_raw = dalembert(phi) + rho / EPSILON_0
     res_ax_raw = dalembert(Ax) + MU_0 * Jx
-    res_ay_raw = dalembert(Ay) + MU_0 + Jy
-    res_az_raw = dalembert(Az) + MU_0 + Jz
+    res_ay_raw = dalembert(Ay) + MU_0 * Jy
+    res_az_raw = dalembert(Az) + MU_0 * Jz
 
     # Lorenz Gauge
     dAx_dx = _grad1(Ax, x)
