@@ -3,7 +3,7 @@ from torch import optim
 from scipy.stats import qmc
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from physics_source import c, mu_0, epsilon_0, t0, rho_func, J_func
+from physics_source import c, mu_0, epsilon_0, t0, v, z0, sigma_x, sigma_y, sigma_z, rho_func, J_func
 from network import WAVENetwork
 
 torch.manual_seed(42)
@@ -94,8 +94,8 @@ def compute_losses(model, points_domain, points_bc_x, points_bc_y, points_bc_ste
     loss_bc += loss_bc_step
 
     # INITIAL CONDITIONS (t=0)
-    x0, y0, z0, t0 = [p.requires_grad_(True) for p in points_ic]
-    Phi0, Ax0, Ay0, Az0 = model(x0, y0, z0, t0)
+    xi, yi, zi, ti = [p.requires_grad_(True) for p in points_ic]
+    Phi0, Ax0, Ay0, Az0 = model(xi, yi, zi, ti)
 
     loss_ic = torch.mean(Phi0**2 + Ax0**2 + Ay0**2 + Az0**2)
 
@@ -153,7 +153,7 @@ def train():
     b = 0.025 # y goes from -0.025m to 0.025m
 
     # The length of the pipe being simulated (taken 2m)
-    z_min, z_max = -5.0, 5.0
+    z_min, z_max = -1.0, 1.0
     
     # Time window of simulation (taken 10 nanoseconds)
     t_min, t_max = 0.0, 1e-8 / t0
@@ -168,6 +168,34 @@ def train():
     # Generate 10,000 distributed LHS points inside the 4D volume
     print("Generating LHS Domain points...")
     domain_pts = generate_lhs_samples(10000, domain_bounds)
+
+    print("Generating Beam Tracking Points (Importance Sampling)...")
+    # The bunch is microscopic, so we must foce points exactly where it travels
+    num_beam_pts = 5000
+
+    t_enter = (z_min - z0) / v
+
+    t_beam = t_enter + torch.rand((num_beam_pts, 1), dtype=torch.float32, device=device) * (t_max - t_enter)
+
+    # Calculate exactly where the center of the beam is at those times
+    z_center = z0 + (v * t_beam)
+
+    # Add a Gaussian spread matching the beam's exact physical dimensions
+    x_beam = torch.randn((num_beam_pts, 1), dtype=torch.float32, device=device) * sigma_x
+    y_beam = torch.randn((num_beam_pts, 1), dtype=torch.float32, device=device) * sigma_y
+    z_beam = z_center + torch.randn((num_beam_pts, 1), dtype=torch.float32, device=device) * sigma_z
+
+    # # Require gradients for the loss function
+    # x_beam.requires_grad_(True)
+    # y_beam.requires_grad_(True)
+    # z_beam.requires_grad_(True)
+    # t_beam.requires_grad_(True)
+
+    # Inject these high density points directly into domain dataset
+    domain_pts[0] = torch.cat([domain_pts[0], x_beam], dim=0)
+    domain_pts[1] = torch.cat([domain_pts[1], y_beam], dim=0)
+    domain_pts[2] = torch.cat([domain_pts[2], z_beam], dim=0)
+    domain_pts[3] = torch.cat([domain_pts[3], t_beam], dim=0)
 
     # For boundary conditions, lock one dimension and use LHS for the remaining 3
     # e.g., for the left/right walls, x is fixed at -a or +a, so we only need to LHS sample y, z, and t
@@ -249,8 +277,8 @@ def train():
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=500)
     epochs = 10000
-    lambda_bc = 100.0 # Prioritize walls
-    lambda_ic = 100.0 # Initial conditions are crucial - give high weight
+    lambda_bc = 1000.0
+    lambda_ic = 100.0
 
     # OLD CODE: TODO: Remove if deemed unnecessary
     # Weighting factor for the boundary conditions

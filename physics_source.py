@@ -20,13 +20,13 @@ epsilon_0 = 1.0
 mu_0 = 1.0
 
 # 3. BUNCH PARAMETERS
-sigma_x = 0.001 / L0
-sigma_y = 0.001 / L0
+sigma_x = 0.01 / L0
+sigma_y = 0.01 / L0
 sigma_z = 0.05 / L0
 v = c # Beam velocity approximated as speed of light
 
 # Add initial offset so that the bunch starts outside the domain (z_min = -1.0)
-z0 = -1.0 / L0
+z0 = -2.0 / L0
 
 def rho_func(x, y, z, t):
     """

@@ -27,7 +27,7 @@ def test_and_visualize(model_path):
     # 2D slice: x = 2, t = 2ns. Vary y and z
     b = 0.025
     z_min, z_max = -1.0, 1.0
-    t_test = 3.33e-9 / t0
+    t_test = 8.33e-9 / t0
 
     # Create linear spaces
     y_vals = np.linspace(-b, b, 100)
@@ -75,7 +75,7 @@ def test_and_visualize(model_path):
     contour = plt.contourf(Z, Y, Ez_grid, levels=50, cmap='RdBu_r')
     plt.colorbar(contour, label='Longitudinal Electric Field Ez (V/m)')
 
-    plt.title("PINN Predicted Wakefield Snapshot at t = 3.33 ns\n(Slice at x=0)")
+    plt.title("PINN Predicted Wakefield Snapshot at t = 8.33 ns\n(Slice at x=0)")
     plt.xlabel("Logitudinal Position z (m)")
     plt.ylabel("Transverse Position y (m)")
 
