@@ -24,6 +24,7 @@ import time
 import json
 import math
 import torch
+from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from config import (
@@ -146,8 +147,15 @@ class Trainer:
         self._resample_pools(seed_offset=0)
 
         t0 = time.time()
-        for epoch in range(self.start_epoch, self.start_epoch + n_epochs):
+        epoch_iter = tqdm(
+            range(self.start_epoch, self.start_epoch + n_epochs),
+            total=n_epochs,
+            desc="Adam",
+            unit="epoch",
+            leave=True,
+        )
 
+        for epoch in epoch_iter:
             self.model.train()
             optimizer.zero_grad()
 
@@ -178,11 +186,12 @@ class Trainer:
             ld["epoch"] = epoch
             ld["lr"]    = scheduler.get_last_lr()[0]
             self.history.append(ld)
+            epoch_iter.set_postfix(total=f"{ld['total']:.4e}", lr=f"{ld['lr']:.2e}")
 
             #  Logging 
             if epoch % LOG_INTERVAL == 0:
                 elapsed = time.time() - t0
-                print(
+                epoch_iter.write(
                     f"[Adam {epoch:5d}/{self.start_epoch + n_epochs - 1}]  "
                     f"{_format_loss(ld)}  "
                     f"lr={ld['lr']:.2e}  {elapsed:.1f}s"
@@ -242,16 +251,24 @@ class Trainer:
             return loss
 
         t0 = time.time()
-        for epoch in range(n_epochs):
+        epoch_iter = tqdm(
+            range(n_epochs),
+            total=n_epochs,
+            desc="L-BFGS",
+            unit="epoch",
+            leave=True,
+        )
+        for epoch in epoch_iter:
             self.model.train()
             optimizer.step(closure)
 
             closure_ld["epoch"] = self.start_epoch + epoch
             self.history.append(dict(closure_ld))
+            epoch_iter.set_postfix(total=f"{closure_ld['total']:.4e}")
 
             if epoch % LOG_INTERVAL == 0:
                 elapsed = time.time() - t0
-                print(
+                epoch_iter.write(
                     f"[LBFGS {epoch:4d}/{n_epochs - 1}]  "
                     f"{_format_loss(closure_ld)}  {elapsed:.1f}s"
                 )
@@ -289,7 +306,7 @@ class Trainer:
             },
             path,
         )
-        print(f"  ✓  Checkpoint saved → {path}")
+        tqdm.write(f"  ✓  Checkpoint saved → {path}")
 
     def load_checkpoint(self, path: str) -> None:
         ckpt = torch.load(path, map_location=self.device)

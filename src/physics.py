@@ -105,7 +105,7 @@ def compute_pde_residuals(
         u_yy = _grad2(u, y)
         u_zz = _grad2(u, z)
         u_tt = _grad2(u, t)
-        return u_xx + u_yy + u_zz + u_tt
+        return u_xx + u_yy + u_zz - INV_C2 * u_tt
     
     # Source Terms
     rho = charge_density(x, y, z, t)
