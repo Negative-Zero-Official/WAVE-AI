@@ -100,6 +100,12 @@ N_IMPORTANCE = 10_000
 N_BC = 8_000
 N_IC = 4_000
 
+# Reduced point sets for L-BFGS phase (faster convergence)
+N_LBFGS_PDE = 4_000
+N_LBFGS_IMPORTANCE = 2_000
+N_LBFGS_BC = 4_000
+N_LBFGS_IC = 2_000
+
 # Batch sizes used each training iteration
 BATCH_PDE = 8_000
 BATCH_BC = 2_000
@@ -110,20 +116,20 @@ BATCH_IC = 1_000
 Training Hyper-Parameters
 """
 LR_ADAM = 1e-4
-N_EPOCHS_ADAM = 5_000       # Adam phase
+N_EPOCHS_ADAM = 8_000       # Adam phase (increased for better warm-start)
 
-LR_LBFGS = 1.0
-N_EPOCHS_LBFGS = 500
-LBFGS_MAX_ITER = 20
+LR_LBFGS = 0.1              # Reduced from 1.0 to prevent gradient explosion
+N_EPOCHS_LBFGS = 200        # Fewer epochs since each is more expensive
+LBFGS_MAX_ITER = 30         # More L-BFGS iterations per epoch
 LBFGS_HISTORY = 50
 
 
 """
 LOSS WEIGHTS
 """
-LAMBDA_BC = 10.0
-LAMBDA_IC = 5.0
-LAMBDA_GAUGE = 1.0 # Already inside L_PDE by default
+LAMBDA_BC = 5.0             # Balanced (reduced from 10.0)
+LAMBDA_IC = 2.5             # Balanced (reduced from 5.0)
+LAMBDA_GAUGE = 1.0          # Already inside L_PDE by default
 
 
 """

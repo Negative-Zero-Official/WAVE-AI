@@ -29,6 +29,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from config import (
     N_PDE, N_IMPORTANCE, N_BC, N_IC,
+    N_LBFGS_PDE, N_LBFGS_IMPORTANCE, N_LBFGS_BC, N_LBFGS_IC,
     BATCH_PDE, BATCH_BC, BATCH_IC,
     LR_ADAM, N_EPOCHS_ADAM,
     LR_LBFGS, N_EPOCHS_LBFGS, LBFGS_MAX_ITER, LBFGS_HISTORY,
@@ -220,34 +221,74 @@ class Trainer:
         print(f"  WAVE-AI — L-BFGS phase  ({n_epochs} epochs)")
         print(f"{'='*60}\n")
 
-        # Fixed training set for the entire L-BFGS phase
+        # Fixed training set for the entire L-BFGS phase (reduced size for efficiency)
         pde_pts_fixed = sample_pde_points(
-            n_lhs=N_PDE,
-            n_imp=N_IMPORTANCE,
+            n_lhs=N_LBFGS_PDE,
+            n_imp=N_LBFGS_IMPORTANCE,
             seed=self.seed + 9999,
             device=self.device,
         )
-        bc_pts_fixed  = sample_boundary(N_BC,  seed=self.seed + 10000)
-        ic_pts_fixed  = sample_ic(N_IC,         seed=self.seed + 10001)
+        bc_pts_fixed  = sample_boundary(N_LBFGS_BC,  seed=self.seed + 10000)
+        ic_pts_fixed  = sample_ic(N_LBFGS_IC,         seed=self.seed + 10001)
 
         optimizer = torch.optim.LBFGS(
             self.model.parameters(),
             lr=LR_LBFGS,
             max_iter=LBFGS_MAX_ITER,
             history_size=LBFGS_HISTORY,
-            tolerance_change=1e-9,
-            tolerance_grad=1e-7,
-            line_search_fn="strong_wolfe",
+            tolerance_change=1e-6,  # Relaxed from 1e-9
+            tolerance_grad=1e-5,    # Relaxed from 1e-7
+            line_search_fn="strong_wolfe",  # Re-enabled with relaxed tolerances
         )
 
         # Mutable closure state (so we can log it after each step)
         closure_ld: dict[str, float] = {}
+        closure_call_count = 0
 
         def closure():
+            nonlocal closure_call_count
+            closure_call_count += 1
+            start_time = time.time()
+            
             optimizer.zero_grad()
             loss, ld = self._eval_loss(pde_pts_fixed, bc_pts_fixed, ic_pts_fixed)
+            
+            # Check for NaN/inf in loss
+            if not torch.isfinite(loss):
+                print(f"WARNING: Non-finite loss detected in closure call {closure_call_count}: {loss.item()}")
+                return torch.tensor(float('inf'), device=loss.device)
+            
             loss.backward()
+            
+            # Check gradients before clipping
+            total_grad_norm = torch.norm(torch.stack([torch.norm(p.grad.detach()) for p in self.model.parameters() if p.grad is not None]))
+            if not torch.isfinite(total_grad_norm):
+                print(f"WARNING: Infinite gradients detected before clipping in closure call {closure_call_count}")
+                # Update closure_ld even for inf case
+                closure_ld.update(ld)
+                closure_ld["closure_calls"] = closure_call_count
+                closure_ld["grad_norm"] = float('inf')
+                closure_ld["closure_time"] = time.time() - start_time
+                # Set gradients to zero to prevent optimizer issues
+                for p in self.model.parameters():
+                    if p.grad is not None:
+                        p.grad.zero_()
+                return torch.tensor(float('inf'), device=loss.device)
+            
+            # Gradient clipping prevents exploding gradients
+            grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=10.0)
+            
+            # Check for NaN/inf in gradients
+            has_nan_grad = any(not torch.isfinite(p.grad).all() for p in self.model.parameters() if p.grad is not None)
+            if has_nan_grad:
+                print(f"WARNING: NaN/inf gradients detected in closure call {closure_call_count}")
+                return torch.tensor(float('inf'), device=loss.device)
+            
             closure_ld.update(ld)
+            closure_ld["closure_calls"] = closure_call_count
+            closure_ld["grad_norm"] = grad_norm.item()
+            closure_ld["closure_time"] = time.time() - start_time
+            
             return loss
 
         t0 = time.time()
@@ -258,19 +299,33 @@ class Trainer:
             unit="epoch",
             leave=True,
         )
+        
         for epoch in epoch_iter:
+            closure_call_count = 0  # Reset per epoch
+            
+            step_start = time.time()
             self.model.train()
             optimizer.step(closure)
-
+            step_time = time.time() - step_start
+            
             closure_ld["epoch"] = self.start_epoch + epoch
+            closure_ld["step_time"] = step_time
             self.history.append(dict(closure_ld))
-            epoch_iter.set_postfix(total=f"{closure_ld['total']:.4e}")
-
+            epoch_iter.set_postfix(
+                total=f"{closure_ld['total']:.4e}",
+                calls=closure_ld.get("closure_calls", 0),
+                grad_norm=f"{closure_ld.get('grad_norm', 0):.2e}",
+                step_time=f"{step_time:.1f}s"
+            )
+            
             if epoch % LOG_INTERVAL == 0:
                 elapsed = time.time() - t0
                 epoch_iter.write(
                     f"[LBFGS {epoch:4d}/{n_epochs - 1}]  "
-                    f"{_format_loss(closure_ld)}  {elapsed:.1f}s"
+                    f"{_format_loss(closure_ld)}  "
+                    f"calls={closure_ld.get('closure_calls', 0)}  "
+                    f"grad_norm={closure_ld.get('grad_norm', 0):.2e}  "
+                    f"step_time={step_time:.1f}s  {elapsed:.1f}s total"
                 )
 
             if epoch % SAVE_INTERVAL == 0 and epoch > 0:

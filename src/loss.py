@@ -117,7 +117,18 @@ def total_loss(
     l_bc, d_bc = bc_loss(model, bc_pts)
     l_ic, d_ic = ic_loss(model, ic_pts)
 
+    # Check for NaN/inf in individual losses
+    losses = [l_pde, l_bc, l_ic]
+    loss_names = ["pde", "bc", "ic"]
+    for loss, name in zip(losses, loss_names):
+        if not torch.isfinite(loss):
+            print(f"WARNING: Non-finite {name} loss: {loss.item()}")
+
     loss = l_pde + LAMBDA_BC * l_bc + LAMBDA_IC * l_ic
+    
+    # Final check
+    if not torch.isfinite(loss):
+        print(f"WARNING: Non-finite total loss: {loss.item()}")
 
     loss_dict: dict[str, float] = {
         "total": loss.item(),
