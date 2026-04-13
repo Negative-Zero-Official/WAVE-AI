@@ -115,10 +115,12 @@ def compute_pde_residuals(
     L0 = (Z_MAX - Z_MIN) / 2.0
     T0 = L0 / C_LIGHT
 
-    rho_scaled = (rho / EPSILON_0) * (L0**2)
-    Jx_scaled = (MU_0 * Jx) * (L0**2)
-    Jy_scaled = (MU_0 * Jy) * (L0**2)
-    Jz_scaled = (MU_0 * Jz) * (L0**2)
+    SOURCE_SCALE = 10.0
+
+    rho_scaled = SOURCE_SCALE * (rho / EPSILON_0) * (L0**2)
+    Jx_scaled = SOURCE_SCALE * (MU_0 * Jx) * (L0**2)
+    Jy_scaled = SOURCE_SCALE * (MU_0 * Jy) * (L0**2)
+    Jz_scaled = SOURCE_SCALE * (MU_0 * Jz) * (L0**2)
 
     res_phi_raw = dalembert(phi) * (L0**2) + rho_scaled
     res_ax_raw = dalembert(Ax) * (L0**2) + Jx_scaled

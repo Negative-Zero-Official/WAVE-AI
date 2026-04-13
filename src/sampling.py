@@ -235,7 +235,7 @@ def sample_pde_points(
     lhs = sample_interior_lhs(n_lhs, seed=seed, device=device)
     # imp = sample_importance(n_imp, seed=seed, device=device)
     # Increase importance weight
-    imp_weight = 4
+    imp_weight = 8
     imp = sample_importance(n_imp * imp_weight, seed=seed, device=device)
 
     return torch.cat([lhs, imp], dim=0)

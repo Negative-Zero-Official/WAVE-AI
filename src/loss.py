@@ -92,7 +92,7 @@ def pde_loss(model, pts: torch.Tensor) -> tuple[torch.Tensor, dict[str, float]]:
             print(f"WARNING: Non-finite PDE term {name}: {term.item()}")
 
     # PHASE 2 FIX: Strengthen scalar potential enforcement
-    loss = l_phi * (1.0 + LAMBDA_PHI_OVERRIDE) + l_ax + l_ay + l_az + LAMBDA_GAUGE * l_gauge
+    loss = 2.0 * l_phi * (1.0 + LAMBDA_PHI_OVERRIDE) + l_ax + l_ay + l_az + LAMBDA_GAUGE * l_gauge
     
     # PHASE 2 FIX: Add regularization to reduce high-frequency artifacts
     reg = _compute_regularization(model)
