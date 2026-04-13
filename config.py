@@ -24,7 +24,7 @@ Q_TOTAL = 1.0e-9                        # Total charge (1 nC)
 # Traverse (lab-frame) and longitudinal RMS sizes
 SIGMA_X = 1.0e-3    # m
 SIGMA_Y = 1.0e-3    # m
-SIGMA_Z = 5.0e-3    # m (5 mm) - lab-frame bunch length
+SIGMA_Z = 0.05
 
 # Initial position
 Z0_BUNCH = -0.20    # m

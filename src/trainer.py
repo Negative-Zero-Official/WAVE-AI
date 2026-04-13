@@ -183,39 +183,73 @@ class Trainer:
             bc_pts  = _random_batch_dict(self.bc_pool,  BATCH_BC)
             ic_pts  = _random_batch(self.ic_pool, BATCH_IC)
 
-            # 1. Calculate unweighted losses individually
-            l_pde, _ = pde_loss(self.model, pde_pts)
-            l_bc, _ = bc_loss(self.model, bc_pts)
-            l_ic, _ = ic_loss(self.model, ic_pts)
+        # --- MEMORY-SAFE GRADIENT BALANCING ---
+            # 1. ONLY compute individual graphs and heavy gradients every 50 epochs
+            if epoch % 50 == 0:
+                optimizer.zero_grad()
+                
+                # PDE Gradient (Compute and immediately FREE graph)
+                l_pde, _ = pde_loss(self.model, pde_pts)
+                grad_pde = torch.autograd.grad(l_pde * LAMBDA_PDE, self.model.final_weight)[0]
+                max_grad_pde = torch.max(torch.abs(grad_pde)).item()
+                del l_pde, grad_pde  # Force VRAM release
 
-            # 2. Compute gradients w.r.t the final layer
-            optimizer.zero_grad()
-            
-            grad_pde = torch.autograd.grad(l_pde * LAMBDA_PDE, self.model.final_weight, retain_graph=True)[0]
-            max_grad_pde = torch.max(torch.abs(grad_pde))
+                # BC Gradient (Compute and immediately FREE graph)
+                l_bc, _ = bc_loss(self.model, bc_pts)
+                grad_bc = torch.autograd.grad(l_bc, self.model.final_weight)[0]
+                mean_grad_bc = torch.mean(torch.abs(grad_bc)).item()
+                del l_bc, grad_bc    # Force VRAM release
 
-            grad_bc = torch.autograd.grad(l_bc, self.model.final_weight, retain_graph=True)[0]
-            mean_grad_bc = torch.mean(torch.abs(grad_bc))
+                # IC Gradient (Compute and immediately FREE graph)
+                l_ic, _ = ic_loss(self.model, ic_pts)
+                grad_ic = torch.autograd.grad(l_ic, self.model.final_weight)[0]
+                mean_grad_ic = torch.mean(torch.abs(grad_ic)).item()
+                del l_ic, grad_ic    # Force VRAM release
 
-            grad_ic = torch.autograd.grad(l_ic, self.model.final_weight, retain_graph=True)[0]
-            mean_grad_ic = torch.mean(torch.abs(grad_ic))
+                # Calculate new weights and apply moving average
+                with torch.no_grad():
+                    hat_lambda_bc = max_grad_pde / (mean_grad_bc + 1e-8)
+                    hat_lambda_ic = max_grad_pde / (mean_grad_ic + 1e-8)
 
-            # 3. Calculate new weights and apply moving average
-            with torch.no_grad():
-                hat_lambda_bc = max_grad_pde / (mean_grad_bc + 1e-8)
-                hat_lambda_ic = max_grad_pde / (mean_grad_ic + 1e-8)
+                    self.dyn_lambda_bc = (1.0 - self.alpha_ema) * self.dyn_lambda_bc + self.alpha_ema * hat_lambda_bc
+                    self.dyn_lambda_ic = (1.0 - self.alpha_ema) * self.dyn_lambda_ic + self.alpha_ema * hat_lambda_ic
 
-                self.dyn_lambda_bc = (1.0 - self.alpha_ema) * self.dyn_lambda_bc + self.alpha_ema * hat_lambda_bc.item()
-                self.dyn_lambda_ic = (1.0 - self.alpha_ema) * self.dyn_lambda_ic + self.alpha_ema * hat_lambda_ic.item()
-
-            # 4. Standard Forward + Backward using the new weights
+            # 2. Standard Forward + Backward using the currently stored dynamic weights
             optimizer.zero_grad()
             loss, ld = self._eval_loss(pde_pts, bc_pts, ic_pts)
-
-            #  Backward 
             loss.backward()
 
             # Gradient clipping prevents exploding gradients in early training
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+
+            optimizer.step()
+            scheduler.step()
+
+            # 1. Single Forward Pass (uses current dynamic weights)
+            optimizer.zero_grad()
+            loss, ld = self._eval_loss(pde_pts, bc_pts, ic_pts)
+
+            # 2. DYNAMIC LOSS BALANCING (Zero overhead)
+            # We calculate what multiplier is needed to make the BC/IC loss equal the PDE loss
+            with torch.no_grad():
+                # Extract the raw loss floats from the dictionary returned by _eval_loss
+                raw_pde = ld.get("pde", 1.0)
+                raw_bc  = ld.get("bc", 1.0)
+                raw_ic  = ld.get("ic", 1.0)
+
+                target_lambda_bc = raw_pde / (raw_bc + 1e-8)
+                target_lambda_ic = raw_pde / (raw_ic + 1e-8)
+
+                # Cap them so they don't explode if a loss hits 0
+                target_lambda_bc = min(target_lambda_bc, 1000.0)
+                target_lambda_ic = min(target_lambda_ic, 1000.0)
+
+                # Smooth the update using moving average for the next step
+                self.dyn_lambda_bc = 0.9 * self.dyn_lambda_bc + 0.1 * target_lambda_bc
+                self.dyn_lambda_ic = 0.9 * self.dyn_lambda_ic + 0.1 * target_lambda_ic
+
+            # 3. Single Backward Pass
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
             optimizer.step()
