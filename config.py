@@ -129,8 +129,9 @@ LBFGS_HISTORY = 50
 """
 LOSS WEIGHTS - CRITICAL FIX
 """
-LAMBDA_BC = 1.0
-LAMBDA_IC = 1.0
+LAMBDA_PDE = 5.0
+LAMBDA_BC = 2.0
+LAMBDA_IC = 5.0
 LAMBDA_GAUGE = 10.0
 
 LAMBDA_PHI_OVERRIDE = 0.5   # Moderate boost to Φ (cannot remove; A depends on it)

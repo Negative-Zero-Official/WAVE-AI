@@ -3,7 +3,7 @@ import math
 import torch
 import numpy as np
 from config import (
-    EPSILON_0, LAMBDA_BC, LAMBDA_IC, LAMBDA_GAUGE, LAMBDA_PHI_OVERRIDE, 
+    EPSILON_0, LAMBDA_BC, LAMBDA_IC, LAMBDA_GAUGE, LAMBDA_PDE, LAMBDA_PHI_OVERRIDE, 
     LAMBDA_REG, LAMBDA_SMOOTH, PHI_REF, A_REF, E_REF, Q_TOTAL, SIGMA_X, SIGMA_Z,
     SPECTRAL_FILTER_ENABLED, FILTER_CUTOFF_FREQ, C_LIGHT, T_MIN, V_BUNCH, Z0_BUNCH, Z_MAX, Z_MIN
 )
@@ -222,7 +222,7 @@ def total_loss(
         if not torch.isfinite(loss):
             print(f"WARNING: Non-finite {name} loss: {loss.item()}")
 
-    loss = l_pde + LAMBDA_BC * l_bc + LAMBDA_IC * l_ic
+    loss = LAMBDA_PDE * l_pde + LAMBDA_BC * l_bc + LAMBDA_IC * l_ic
     
     # Final check
     if not torch.isfinite(loss):
