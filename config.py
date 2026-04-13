@@ -90,7 +90,7 @@ WAVENetwork Architecture
 """
 HIDDEN_SIZE = 128
 NUM_LAYERS = 4
-OMEGA_0 = 10.0
+OMEGA_0 = 40.0
 
 
 """

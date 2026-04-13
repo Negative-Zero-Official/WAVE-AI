@@ -88,6 +88,11 @@ class WAVENetwork(nn.Module):
             if self.output_layer.bias is not None:
                 self.output_layer.bias.zero_()
     
+    @property
+    def final_weight(self):
+        # Exposes the final layer weights for dynamic gradient balancing
+        return self.output_layer.weight
+
     def forward(self, coords: torch.Tensor) -> torch.Tensor:
         h = self.hidden(coords)
         out = self.output_layer(h)

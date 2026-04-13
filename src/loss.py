@@ -210,6 +210,8 @@ def total_loss(
         pde_pts: torch.Tensor,
         bc_pts: dict[str, torch.Tensor],
         ic_pts: torch.Tensor,
+        dyn_lambda_bc: float | None = None,
+        dyn_lambda_ic: float | None = None
 ) -> tuple[torch.Tensor, dict[str, float]]:
     l_pde, d_pde = pde_loss(model, pde_pts)
     l_bc, d_bc = bc_loss(model, bc_pts)
@@ -222,7 +224,11 @@ def total_loss(
         if not torch.isfinite(loss):
             print(f"WARNING: Non-finite {name} loss: {loss.item()}")
 
-    loss = LAMBDA_PDE * l_pde + LAMBDA_BC * l_bc + LAMBDA_IC * l_ic
+    # Use dynamic weights if provided, otherwise default to config
+    w_bc = dyn_lambda_bc if dyn_lambda_bc is not None else LAMBDA_BC
+    w_ic = dyn_lambda_ic if dyn_lambda_ic is not None else LAMBDA_IC
+
+    loss = LAMBDA_PDE * l_pde + w_bc * l_bc + w_ic * l_ic
     
     # Final check
     if not torch.isfinite(loss):

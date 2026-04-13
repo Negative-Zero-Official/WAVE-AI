@@ -28,7 +28,7 @@ from tqdm import tqdm
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from config import (
-    N_PDE, N_IMPORTANCE, N_BC, N_IC,
+    LAMBDA_BC, LAMBDA_IC, LAMBDA_PDE, N_PDE, N_IMPORTANCE, N_BC, N_IC,
     N_LBFGS_PDE, N_LBFGS_IMPORTANCE, N_LBFGS_BC, N_LBFGS_IC,
     BATCH_PDE, BATCH_BC, BATCH_IC,
     LR_ADAM, N_EPOCHS_ADAM,
@@ -38,7 +38,7 @@ from config import (
     DEVICE,
 )
 from src.sampling import sample_pde_points, sample_boundary, sample_ic
-from src.loss import total_loss
+from src.loss import total_loss, pde_loss, bc_loss, ic_loss
 
 
 # 
@@ -109,6 +109,10 @@ class Trainer:
         self.seed   = seed
         self.history: list[dict[str, float]] = []   # loss log per epoch
         self.start_epoch = 0                         # supports resume
+        # Initialize dynamic weights
+        self.dyn_lambda_bc = LAMBDA_BC
+        self.dyn_lambda_ic = LAMBDA_IC
+        self.alpha_ema = 0.1  # Exponential moving average decay rate
         _ensure_dirs()
 
     #  Pre-generate a large pool of boundary & IC points 
@@ -126,7 +130,14 @@ class Trainer:
         bc_pts:  dict[str, torch.Tensor],
         ic_pts:  torch.Tensor,
     ) -> tuple[torch.Tensor, dict[str, float]]:
-        return total_loss(self.model, pde_pts, bc_pts, ic_pts)
+        return total_loss(
+            self.model, 
+            pde_pts, 
+            bc_pts, 
+            ic_pts,
+            dyn_lambda_bc=self.dyn_lambda_bc,
+            dyn_lambda_ic=self.dyn_lambda_ic
+        )
 
     # Phase 1: Adam
 
@@ -172,7 +183,33 @@ class Trainer:
             bc_pts  = _random_batch_dict(self.bc_pool,  BATCH_BC)
             ic_pts  = _random_batch(self.ic_pool, BATCH_IC)
 
-            #  Forward + loss 
+            # 1. Calculate unweighted losses individually
+            l_pde, _ = pde_loss(self.model, pde_pts)
+            l_bc, _ = bc_loss(self.model, bc_pts)
+            l_ic, _ = ic_loss(self.model, ic_pts)
+
+            # 2. Compute gradients w.r.t the final layer
+            optimizer.zero_grad()
+            
+            grad_pde = torch.autograd.grad(l_pde * LAMBDA_PDE, self.model.final_weight, retain_graph=True)[0]
+            max_grad_pde = torch.max(torch.abs(grad_pde))
+
+            grad_bc = torch.autograd.grad(l_bc, self.model.final_weight, retain_graph=True)[0]
+            mean_grad_bc = torch.mean(torch.abs(grad_bc))
+
+            grad_ic = torch.autograd.grad(l_ic, self.model.final_weight, retain_graph=True)[0]
+            mean_grad_ic = torch.mean(torch.abs(grad_ic))
+
+            # 3. Calculate new weights and apply moving average
+            with torch.no_grad():
+                hat_lambda_bc = max_grad_pde / (mean_grad_bc + 1e-8)
+                hat_lambda_ic = max_grad_pde / (mean_grad_ic + 1e-8)
+
+                self.dyn_lambda_bc = (1.0 - self.alpha_ema) * self.dyn_lambda_bc + self.alpha_ema * hat_lambda_bc.item()
+                self.dyn_lambda_ic = (1.0 - self.alpha_ema) * self.dyn_lambda_ic + self.alpha_ema * hat_lambda_ic.item()
+
+            # 4. Standard Forward + Backward using the new weights
+            optimizer.zero_grad()
             loss, ld = self._eval_loss(pde_pts, bc_pts, ic_pts)
 
             #  Backward 
@@ -195,7 +232,8 @@ class Trainer:
                 epoch_iter.write(
                     f"[Adam {epoch:5d}/{self.start_epoch + n_epochs - 1}]  "
                     f"{_format_loss(ld)}  "
-                    f"lr={ld['lr']:.2e}  {elapsed:.1f}s"
+                    f"lr={ld['lr']:.2e}  {elapsed:.1f}s  "
+                    f"lambda_BC={self.dyn_lambda_bc:.2e}  lambda_IC={self.dyn_lambda_ic:.2e}"
                 )
 
             #  Checkpointing 
@@ -208,6 +246,9 @@ class Trainer:
 
         self.start_epoch += n_epochs
         print(f"\nAdam phase complete.  Final {_format_loss(self.history[-1])}\n")
+        print(f"  LAMBDA_BC : {self.dyn_lambda_bc:.4f}")
+        print(f"  LAMBDA_IC : {self.dyn_lambda_ic:.4f}")
+        print("-"  *60 + "\n")
 
     # Phase 2: L-BFGS
 
